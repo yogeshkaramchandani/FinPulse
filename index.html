@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinPulse — Privacy-First Expense Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; background-color: #0b0f19; color: #f8fafc; }
+    .glass { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.6); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  </style>
+</head>
+<body class="min-h-screen pb-16">
+
+  <!-- Top Navigation -->
+  <header class="sticky top-0 z-30 glass border-b border-slate-800 px-4 py-3.5">
+    <div class="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
+          <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white leading-none">FinPulse</h1>
+          <span id="syncStatusText" class="text-[11px] text-slate-400">Local Storage • Ready</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap">
+        <!-- Category Manager Button -->
+        <button onclick="openCategoryModal()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          <i data-lucide="tags" class="w-3.5 h-3.5 text-indigo-400"></i>
+          <span>Categories</span>
+        </button>
+
+        <!-- Excel Export -->
+        <button onclick="exportToExcel()" class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition">
+          <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-400"></i>
+          <span>Export Excel</span>
+        </button>
+
+        <!-- Excel Import -->
+        <label class="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 cursor-pointer transition">
+          <i data-lucide="upload" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>Import Excel</span>
+          <input type="file" id="excelFileInput" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleExcelUpload(event)" />
+        </label>
+
+        <!-- Google Drive Sync Button -->
+        <button id="googleSyncBtn" onclick="handleGoogleSignIn()" class="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 transition">
+          <i data-lucide="cloud" class="w-3.5 h-3.5"></i>
+          <span id="googleSyncBtnText">Sync with Google Drive</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-6xl mx-auto px-4 mt-6 space-y-6">
+
+    <!-- Filter Bar (Yearly, Monthly, Category, Search & Clear All) -->
+    <section class="glass rounded-2xl p-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2 text-xs font-semibold text-slate-300">
+          <i data-lucide="filter" class="w-4 h-4 text-indigo-400"></i>
+          <span>Filter Ledger:</span>
+          <span id="activeFilterBadge" class="hidden px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+            Filtered View
+          </span>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 flex-1 sm:flex-initial justify-end">
+          <!-- Year Filter -->
+          <select id="filterYear" onchange="renderUI()" class="px-3 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500">
+            <option value="ALL">All Years</option>
+          </select>
+
+          <!-- Month Filter -->
+          <select id="filterMonth" onchange="renderUI()" class="px-3 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500">
+            <option value="ALL">All Months</option>
+            <option value="01">January</option>
+            <option value="02">February</option>
+            <option value="03">March</option>
+            <option value="04">April</option>
+            <option value="05">May</option>
+            <option value="06">June</option>
+            <option value="07">July</option>
+            <option value="08">August</option>
+            <option value="09">September</option>
+            <option value="10">October</option>
+            <option value="11">November</option>
+            <option value="12">December</option>
+          </select>
+
+          <!-- Category Filter -->
+          <select id="filterCategory" onchange="renderUI()" class="px-3 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500">
+            <option value="ALL">All Categories</option>
+          </select>
+
+          <!-- Search Input -->
+          <div class="relative">
+            <input type="text" id="searchInput" oninput="renderUI()" placeholder="Search note or category..." class="pl-3 pr-7 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500 w-44 sm:w-52" />
+          </div>
+
+          <!-- Remove All Filters Button -->
+          <button id="clearFiltersBtn" onclick="clearAllFilters()" class="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            <span>Clear Filters</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Summary KPI Cards -->
+    <section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+          <span>TOTAL INCOME</span>
+          <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+        </div>
+        <p id="kpiIncome" class="text-2xl font-bold text-emerald-400 mt-2">₹0.00</p>
+      </div>
+
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+          <span>TOTAL EXPENSES</span>
+          <i data-lucide="trending-down" class="w-4 h-4 text-rose-400"></i>
+        </div>
+        <p id="kpiExpense" class="text-2xl font-bold text-rose-400 mt-2">₹0.00</p>
+      </div>
+
+      <div class="glass rounded-2xl p-5">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-medium">
+          <span>NET BALANCE</span>
+          <i data-lucide="wallet" class="w-4 h-4 text-indigo-400"></i>
+        </div>
+        <p id="kpiBalance" class="text-2xl font-bold text-white mt-2">₹0.00</p>
+      </div>
+    </section>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- Add / Edit Transaction Form -->
+      <section class="glass rounded-2xl p-5 h-fit">
+        <div class="flex items-center justify-between mb-4">
+          <h2 id="formTitle" class="text-sm font-semibold text-white">Add Transaction</h2>
+          <button onclick="openCategoryModal()" class="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
+            <i data-lucide="edit-3" class="w-3 h-3"></i> Edit Categories
+          </button>
+        </div>
+
+        <form id="txForm" onsubmit="saveTransaction(event)" class="space-y-3.5">
+          <input type="hidden" id="txId" />
+
+          <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800">
+            <button type="button" id="typeExpenseBtn" onclick="setTxType('expense')" class="py-1.5 text-xs font-semibold rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40">
+              Expense
+            </button>
+            <button type="button" id="typeIncomeBtn" onclick="setTxType('income')" class="py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-white">
+              Income
+            </button>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Date</label>
+            <input type="date" id="txDate" required class="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Category</label>
+            <select id="txCategory" required class="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500"></select>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Amount (₹)</label>
+            <input type="number" step="0.01" id="txAmount" placeholder="0.00" required class="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Description / Note</label>
+            <input type="text" id="txNote" placeholder="e.g., Grocery, Client Invoice" required class="w-full px-3 py-2 text-sm rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500" />
+          </div>
+
+          <div class="flex gap-2 pt-1">
+            <button type="submit" class="w-full py-2.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition">
+              Save Transaction
+            </button>
+            <button type="button" id="cancelEditBtn" onclick="resetForm()" class="hidden px-3 py-2.5 text-xs font-medium rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700">
+              Cancel
+            </button>
+          </div>
+        </form>
+
+        <!-- Category Breakdown Mini List -->
+        <div class="mt-6 pt-5 border-t border-slate-800">
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">Expense by Category</h3>
+          <div id="categoryBreakdown" class="space-y-2.5 text-xs"></div>
+        </div>
+      </section>
+
+      <!-- Transactions Table -->
+      <section class="lg:col-span-2 glass rounded-2xl p-5 flex flex-col">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h2 class="text-sm font-semibold text-white">Transactions Ledger</h2>
+          <span id="txCountLabel" class="text-xs text-slate-400">0 entries</span>
+        </div>
+
+        <div class="overflow-x-auto flex-1">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-slate-800 text-[11px] text-slate-400 uppercase">
+                <th class="py-2.5 px-2">Date</th>
+                <th class="py-2.5 px-2">Category</th>
+                <th class="py-2.5 px-2">Description</th>
+                <th class="py-2.5 px-2 text-right">Amount</th>
+                <th class="py-2.5 px-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="txTableBody" class="divide-y divide-slate-800/60 text-xs"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- CATEGORY EDIT / MANAGER MODAL -->
+  <div id="categoryModal" class="fixed inset-0 z-50 hidden bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-md w-full p-5 border border-slate-700 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <i data-lucide="tags" class="w-4 h-4 text-indigo-400"></i>
+          Manage & Edit Categories
+        </h3>
+        <button onclick="closeCategoryModal()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Add New Category -->
+      <div class="mt-4 flex gap-2">
+        <input type="text" id="newCategoryInput" placeholder="New category name..." class="flex-1 px-3 py-2 text-xs rounded-lg bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-indigo-500" />
+        <button onclick="addCategory()" class="px-3.5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white">
+          Add
+        </button>
+      </div>
+
+      <!-- Existing Categories List (Rename / Delete) -->
+      <p class="text-[11px] text-slate-400 mt-4 mb-2">Rename a category below to automatically update all matching transactions:</p>
+      <div id="categoryManagerList" class="max-h-64 overflow-y-auto space-y-2 pr-1"></div>
+
+      <div class="mt-5 pt-3 border-t border-slate-800 flex justify-end">
+        <button onclick="closeCategoryModal()" class="px-4 py-2 text-xs font-medium rounded-lg bg-slate-800 hover:bg-slate-700 text-white">
+          Done
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXCEL DIFF APPROVAL MODAL -->
+  <div id="diffModal" class="fixed inset-0 z-50 hidden bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass rounded-2xl max-w-2xl w-full p-5 border border-slate-700 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h3 class="text-sm font-bold text-white">Review Excel Import Changes</h3>
+        <button onclick="closeDiffModal()" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div id="diffSummary" class="mt-3 text-xs text-slate-300 space-y-2 max-h-80 overflow-y-auto"></div>
+      <div class="mt-5 pt-3 border-t border-slate-800 flex justify-end gap-2">
+        <button onclick="closeDiffModal()" class="px-4 py-2 text-xs font-medium rounded-lg bg-slate-800 text-slate-300">Cancel</button>
+        <button onclick="applyExcelDiff()" class="px-4 py-2 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white">Approve & Merge</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================================
+    // 1. GOOGLE OAUTH CONFIGURATION (PASTE YOUR CLIENT ID BELOW)
+    // ============================================================================
+    const DEFAULT_GOOGLE_CLIENT_ID = "PASTE_YOUR_CLIENT_ID_HERE.apps.googleusercontent.com";
+    const SCOPES = "https://www.googleapis.com/auth/drive.appdata";
+    const DRIVE_FILE_NAME = "finpulse_ledger_v1.json";
+
+    let googleClientId = DEFAULT_GOOGLE_CLIENT_ID;
+    let tokenClient = null;
+    let accessToken = localStorage.getItem("finpulse_access_token") || null;
+
+    // ============================================================================
+    // 2. STATE MANAGEMENT (TRANSACTIONS, CATEGORIES, TOMBSTONES)
+    // ============================================================================
+    const DEFAULT_CATEGORIES = [
+      "Food & Dining", "Groceries", "Transport", "Utilities",
+      "Shopping", "Health & Fitness", "Entertainment", "Investment", "Salary", "Other"
+    ];
+
+    let state = {
+      transactions: JSON.parse(localStorage.getItem("finpulse_tx") || "[]"),
+      categories: JSON.parse(localStorage.getItem("finpulse_categories") || JSON.stringify(DEFAULT_CATEGORIES)),
+      deletedTxIds: JSON.parse(localStorage.getItem("finpulse_deleted") || "{}"),
+      categoriesUpdatedAt: Number(localStorage.getItem("finpulse_cat_updated") || 0)
+    };
+
+    let currentTxType = "expense";
+    let pendingExcelDiff = null;
+
+    function saveLocalState() {
+      localStorage.setItem("finpulse_tx", JSON.stringify(state.transactions));
+      localStorage.setItem("finpulse_categories", JSON.stringify(state.categories));
+      localStorage.setItem("finpulse_deleted", JSON.stringify(state.deletedTxIds));
+      localStorage.setItem("finpulse_cat_updated", String(state.categoriesUpdatedAt));
+    }
+
+    // ============================================================================
+    // 3. FILTER & DROPDOWN MANAGEMENT (YEARLY, MONTHLY, CATEGORY, CLEAR ALL)
+    // ============================================================================
+    function renderYearDropdown() {
+      const yearSelect = document.getElementById("filterYear");
+      const currentSelectedYear = yearSelect.value || "ALL";
+      const currentYear = String(new Date().getFullYear());
+
+      const yearsSet = new Set([currentYear]);
+      state.transactions.forEach(tx => {
+        if (tx.date && tx.date.length >= 4) {
+          yearsSet.add(tx.date.substring(0, 4));
+        }
+      });
+
+      const sortedYears = Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+      yearSelect.innerHTML = `<option value="ALL">All Years</option>` +
+        sortedYears.map(yr => `<option value="${escapeHtml(yr)}">${escapeHtml(yr)}</option>`).join("");
+
+      if (currentSelectedYear === "ALL" || sortedYears.includes(currentSelectedYear)) {
+        yearSelect.value = currentSelectedYear;
+      } else {
+        yearSelect.value = "ALL";
+      }
+    }
+
+    function renderCategoryDropdowns() {
+      const txCategorySelect = document.getElementById("txCategory");
+      const filterSelect = document.getElementById("filterCategory");
+      const currentSelected = txCategorySelect.value;
+      const currentFilter = filterSelect.value || "ALL";
+
+      txCategorySelect.innerHTML = state.categories
+        .map(cat => `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`)
+        .join("");
+
+      if (state.categories.includes(currentSelected)) {
+        txCategorySelect.value = currentSelected;
+      }
+
+      filterSelect.innerHTML = `<option value="ALL">All Categories</option>` +
+        state.categories.map(cat => `<option value="${escapeHtml(cat)}">${escapeHtml(cat)}</option>`).join("");
+      filterSelect.value = state.categories.includes(currentFilter) ? currentFilter : "ALL";
+    }
+
+    function clearAllFilters() {
+      document.getElementById("filterYear").value = "ALL";
+      document.getElementById("filterMonth").value = "ALL";
+      document.getElementById("filterCategory").value = "ALL";
+      document.getElementById("searchInput").value = "";
+      renderUI();
+    }
+
+    // ============================================================================
+    // 4. CATEGORY MANAGER MODAL (ADD, RENAME, DELETE)
+    // ============================================================================
+    function openCategoryModal() {
+      renderCategoryManagerList();
+      document.getElementById("categoryModal").classList.remove("hidden");
+    }
+
+    function closeCategoryModal() {
+      document.getElementById("categoryModal").classList.add("hidden");
+    }
+
+    function renderCategoryManagerList() {
+      const container = document.getElementById("categoryManagerList");
+      container.innerHTML = state.categories.map((cat, idx) => `
+        <div class="flex items-center gap-2 bg-slate-900/90 p-2 rounded-lg border border-slate-800">
+          <input type="text" id="catEditInput_${idx}" value="${escapeHtml(cat)}"
+            class="flex-1 bg-slate-950 px-2.5 py-1.5 text-xs rounded border border-slate-700 text-white focus:border-indigo-500 focus:outline-none" />
+          <button onclick="renameCategory(${idx})" class="px-2.5 py-1.5 text-[11px] font-medium bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 rounded hover:bg-indigo-600 hover:text-white transition">
+            Save
+          </button>
+          <button onclick="deleteCategory(${idx})" class="p-1.5 text-slate-400 hover:text-rose-400 transition" title="Delete Category">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      `).join("");
+      lucide.createIcons();
+    }
+
+    function addCategory() {
+      const input = document.getElementById("newCategoryInput");
+      const val = input.value.trim();
+      if (!val) return;
+      if (state.categories.some(c => c.toLowerCase() === val.toLowerCase())) {
+        alert("Category already exists!");
+        return;
+      }
+      state.categories.push(val);
+      state.categoriesUpdatedAt = Date.now();
+      input.value = "";
+      saveLocalState();
+      renderCategoryDropdowns();
+      renderCategoryManagerList();
+      renderUI();
+      triggerAutoCloudSync();
+    }
+
+    function renameCategory(index) {
+      const oldName = state.categories[index];
+      const input = document.getElementById(`catEditInput_${index}`);
+      const newName = input.value.trim();
+      if (!newName || newName === oldName) return;
+
+      state.categories[index] = newName;
+      state.categoriesUpdatedAt = Date.now();
+
+      const now = Date.now();
+      state.transactions.forEach(tx => {
+        if (tx.category === oldName) {
+          tx.category = newName;
+          tx.updatedAt = now;
+        }
+      });
+
+      saveLocalState();
+      renderCategoryDropdowns();
+      renderCategoryManagerList();
+      renderUI();
+      triggerAutoCloudSync();
+    }
+
+    function deleteCategory(index) {
+      if (state.categories.length <= 1) {
+        alert("You must keep at least one category.");
+        return;
+      }
+      const removed = state.categories[index];
+      if (!confirm(`Delete category "${removed}"? Existing transactions will keep their label unless edited.`)) return;
+
+      state.categories.splice(index, 1);
+      state.categoriesUpdatedAt = Date.now();
+      saveLocalState();
+      renderCategoryDropdowns();
+      renderCategoryManagerList();
+      renderUI();
+      triggerAutoCloudSync();
+    }
+
+    // ============================================================================
+    // 5. TRANSACTIONS CRUD & UI RENDERING
+    // ============================================================================
+    function setTxType(type) {
+      currentTxType = type;
+      const expBtn = document.getElementById("typeExpenseBtn");
+      const incBtn = document.getElementById("typeIncomeBtn");
+      if (type === "expense") {
+        expBtn.className = "py-1.5 text-xs font-semibold rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40";
+        incBtn.className = "py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-white";
+      } else {
+        incBtn.className = "py-1.5 text-xs font-semibold rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40";
+        expBtn.className = "py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-white";
+      }
+    }
+
+    function saveTransaction(e) {
+      e.preventDefault();
+      const idField = document.getElementById("txId").value;
+      const date = document.getElementById("txDate").value;
+      const category = document.getElementById("txCategory").value;
+      const amount = parseFloat(document.getElementById("txAmount").value) || 0;
+      const note = document.getElementById("txNote").value.trim();
+
+      const now = Date.now();
+      if (idField) {
+        const idx = state.transactions.findIndex(t => t.id === idField);
+        if (idx > -1) {
+          state.transactions[idx] = { ...state.transactions[idx], type: currentTxType, date, category, amount, note, updatedAt: now };
+        }
+      } else {
+        const newId = "tx_" + now + "_" + Math.random().toString(36).substring(2, 7);
+        state.transactions.push({ id: newId, type: currentTxType, date, category, amount, note, updatedAt: now });
+      }
+
+      saveLocalState();
+      renderYearDropdown();
+      resetForm();
+      renderUI();
+      triggerAutoCloudSync();
+    }
+
+    function editTransaction(id) {
+      const tx = state.transactions.find(t => t.id === id);
+      if (!tx) return;
+      document.getElementById("formTitle").textContent = "Edit Transaction";
+      document.getElementById("txId").value = tx.id;
+      document.getElementById("txDate").value = tx.date;
+      if (!state.categories.includes(tx.category)) {
+        state.categories.push(tx.category);
+        renderCategoryDropdowns();
+      }
+      document.getElementById("txCategory").value = tx.category;
+      document.getElementById("txAmount").value = tx.amount;
+      document.getElementById("txNote").value = tx.note;
+      setTxType(tx.type);
+      document.getElementById("cancelEditBtn").classList.remove("hidden");
+    }
+
+    function deleteTransaction(id) {
+      state.transactions = state.transactions.filter(t => t.id !== id);
+      state.deletedTxIds[id] = Date.now();
+      saveLocalState();
+      renderYearDropdown();
+      renderUI();
+      triggerAutoCloudSync();
+    }
+
+    function resetForm() {
+      document.getElementById("formTitle").textContent = "Add Transaction";
+      document.getElementById("txId").value = "";
+      document.getElementById("txDate").value = new Date().toISOString().split("T")[0];
+      document.getElementById("txAmount").value = "";
+      document.getElementById("txNote").value = "";
+      setTxType("expense");
+      document.getElementById("cancelEditBtn").classList.add("hidden");
+    }
+
+    function renderUI() {
+      const search = (document.getElementById("searchInput").value || "").toLowerCase().trim();
+      const filterCat = document.getElementById("filterCategory").value || "ALL";
+      const filterYear = document.getElementById("filterYear").value || "ALL";
+      const filterMonth = document.getElementById("filterMonth").value || "ALL";
+
+      const isAnyFilterActive = filterCat !== "ALL" || filterYear !== "ALL" || filterMonth !== "ALL" || search !== "";
+      const activeBadge = document.getElementById("activeFilterBadge");
+      if (isAnyFilterActive) {
+        activeBadge.classList.remove("hidden");
+      } else {
+        activeBadge.classList.add("hidden");
+      }
+
+      // Filter transactions based on Year, Month, Category, and Search query
+      const filtered = state.transactions
+        .filter(tx => {
+          const txYear = tx.date ? tx.date.substring(0, 4) : "";
+          const txMonth = tx.date ? tx.date.substring(5, 7) : "";
+
+          const matchesYear = (filterYear === "ALL" || txYear === filterYear);
+          const matchesMonth = (filterMonth === "ALL" || txMonth === filterMonth);
+          const matchesCat = (filterCat === "ALL" || tx.category === filterCat);
+          const matchesSearch = !search ||
+            (tx.note && tx.note.toLowerCase().includes(search)) ||
+            (tx.category && tx.category.toLowerCase().includes(search));
+
+          return matchesYear && matchesMonth && matchesCat && matchesSearch;
+        })
+        .sort((a, b) => b.date.localeCompare(a.date));
+
+      // Calculate KPIs & Category Breakdown from the active filtered view
+      let totalIncome = 0;
+      let totalExpense = 0;
+      const catTotals = {};
+
+      filtered.forEach(tx => {
+        if (tx.type === "income") {
+          totalIncome += Number(tx.amount);
+        } else {
+          totalExpense += Number(tx.amount);
+          catTotals[tx.category] = (catTotals[tx.category] || 0) + Number(tx.amount);
+        }
+      });
+
+      document.getElementById("kpiIncome").textContent = `₹${totalIncome.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+      document.getElementById("kpiExpense").textContent = `₹${totalExpense.toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+      const net = totalIncome - totalExpense;
+      document.getElementById("kpiBalance").textContent = `${net < 0 ? "-" : ""}₹${Math.abs(net).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+      document.getElementById("txCountLabel").textContent = `${filtered.length} ${filtered.length === 1 ? 'entry' : 'entries'}`;
+
+      // Render Category Breakdown
+      const catBreakdownEl = document.getElementById("categoryBreakdown");
+      const sortedCats = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
+      if (sortedCats.length === 0) {
+        catBreakdownEl.innerHTML = `<p class="text-slate-500">No expenses for selected filters.</p>`;
+      } else {
+        catBreakdownEl.innerHTML = sortedCats.map(([cat, amt]) => {
+          const pct = totalExpense > 0 ? Math.round((amt / totalExpense) * 100) : 0;
+          return `
+            <div>
+              <div class="flex justify-between text-slate-300 mb-1">
+                <span>${escapeHtml(cat)}</span>
+                <span class="font-medium">₹${amt.toLocaleString("en-IN")} (${pct}%)</span>
+              </div>
+              <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div class="h-full bg-indigo-500 rounded-full" style="width: ${pct}%"></div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+      // Render Table
+      const tbody = document.getElementById("txTableBody");
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-slate-500">No matching transactions found.</td></tr>`;
+      } else {
+        tbody.innerHTML = filtered.map(tx => `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="py-3 px-2 text-slate-300 whitespace-nowrap">${escapeHtml(tx.date)}</td>
+            <td class="py-3 px-2"><span class="px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700 text-slate-200">${escapeHtml(tx.category)}</span></td>
+            <td class="py-3 px-2 text-white">${escapeHtml(tx.note)}</td>
+            <td class="py-3 px-2 text-right font-semibold whitespace-nowrap ${tx.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}">
+              ${tx.type === 'income' ? '+' : '-'}₹${Number(tx.amount).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+            </td>
+            <td class="py-3 px-2 text-right whitespace-nowrap">
+              <button onclick="editTransaction('${tx.id}')" class="p-1 text-slate-400 hover:text-indigo-400 mr-1"><i data-lucide="edit-2" class="w-3.5 h-3.5 inline"></i></button>
+              <button onclick="deleteTransaction('${tx.id}')" class="p-1 text-slate-400 hover:text-rose-400"><i data-lucide="trash" class="w-3.5 h-3.5 inline"></i></button>
+            </td>
+          </tr>
+        `).join("");
+      }
+      lucide.createIcons();
+    }
+
+    // ============================================================================
+    // 6. EXCEL EXPORT & SMART DIFF IMPORT
+    // ============================================================================
+    function exportToExcel() {
+      const rows = state.transactions.map(t => ({
+        ID: t.id,
+        Date: t.date,
+        Type: t.type,
+        Category: t.category,
+        Amount: t.amount,
+        Description: t.note
+      }));
+      const ws = XLSX.utils.json_to_sheet(rows);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Transactions");
+      XLSX.writeFile(wb, `FinPulse_Ledger_${new Date().toISOString().slice(0,10)}.xlsx`);
+    }
+
+    function handleExcelUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet);
+
+        const added = [];
+        const modified = [];
+        const localMap = new Map(state.transactions.map(t => [t.id, t]));
+
+        rows.forEach(r => {
+          const id = r.ID ? String(r.ID).trim() : null;
+          const date = r.Date ? String(r.Date).trim() : new Date().toISOString().split("T")[0];
+          const type = (String(r.Type || "expense").toLowerCase() === "income") ? "income" : "expense";
+          const category = r.Category ? String(r.Category).trim() : "Other";
+          const amount = parseFloat(r.Amount) || 0;
+          const note = r.Description ? String(r.Description).trim() : "";
+
+          if (id && localMap.has(id)) {
+            const ex = localMap.get(id);
+            if (ex.date !== date || ex.type !== type || ex.category !== category || Number(ex.amount) !== amount || ex.note !== note) {
+              modified.push({ id, date, type, category, amount, note, updatedAt: Date.now() });
+            }
+          } else {
+            added.push({
+              id: id || ("tx_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7)),
+              date, type, category, amount, note, updatedAt: Date.now()
+            });
+          }
+        });
+
+        pendingExcelDiff = { added, modified };
+        document.getElementById("diffSummary").innerHTML = `
+          <p class="text-emerald-400 font-semibold">+ ${added.length} New Transactions to add</p>
+          <p class="text-amber-400 font-semibold">~ ${modified.length} Existing Transactions modified</p>
+        `;
+        document.getElementById("diffModal").classList.remove("hidden");
+        event.target.value = "";
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function closeDiffModal() {
+      pendingExcelDiff = null;
+      document.getElementById("diffModal").classList.add("hidden");
+    }
+
+    function applyExcelDiff() {
+      if (!pendingExcelDiff) return;
+      const { added, modified } = pendingExcelDiff;
+      added.forEach(tx => {
+        state.transactions.push(tx);
+        if (!state.categories.includes(tx.category)) state.categories.push(tx.category);
+      });
+      modified.forEach(mod => {
+        const idx = state.transactions.findIndex(t => t.id === mod.id);
+        if (idx > -1) state.transactions[idx] = mod;
+        if (!state.categories.includes(mod.category)) state.categories.push(mod.category);
+      });
+      state.categoriesUpdatedAt = Date.now();
+      saveLocalState();
+      renderYearDropdown();
+      renderCategoryDropdowns();
+      renderUI();
+      closeDiffModal();
+      triggerAutoCloudSync();
+    }
+
+    // ============================================================================
+    // 7. GOOGLE DRIVE APPDATA SYNC
+    // ============================================================================
+    function initGoogleAuth() {
+      if (!window.google || !google.accounts || !google.accounts.oauth2) return;
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: googleClientId,
+        scope: SCOPES,
+        callback: async (resp) => {
+          if (resp.error) return;
+          accessToken = resp.access_token;
+          localStorage.setItem("finpulse_access_token", accessToken);
+          await syncWithGoogleDrive();
+        }
+      });
+    }
+
+    function handleGoogleSignIn() {
+      googleClientId = DEFAULT_GOOGLE_CLIENT_ID;
+      if (!tokenClient) initGoogleAuth();
+      if (tokenClient) {
+        tokenClient.requestAccessToken({ prompt: "" });
+      } else {
+        alert("Google Sign-In library is still initializing. Please try again in a second.");
+      }
+    }
+
+    async function triggerAutoCloudSync() {
+      if (accessToken) await syncWithGoogleDrive();
+    }
+
+    async function syncWithGoogleDrive() {
+      const statusEl = document.getElementById("syncStatusText");
+      const btnText = document.getElementById("googleSyncBtnText");
+      try {
+        statusEl.textContent = "Syncing with Google Drive...";
+        btnText.textContent = "Syncing...";
+
+        const searchRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name='${DRIVE_FILE_NAME}' and trashed=false&fields=files(id,name)`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        if (searchRes.status === 401) {
+          accessToken = null;
+          localStorage.removeItem("finpulse_access_token");
+          statusEl.textContent = "Session expired • Click Sync";
+          btnText.textContent = "Sync with Google Drive";
+          return;
+        }
+        const searchData = await searchRes.json();
+        const existingFile = searchData.files && searchData.files[0];
+
+        if (existingFile) {
+          const contentRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${existingFile.id}?alt=media`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (contentRes.ok) {
+            const remoteState = await contentRes.json();
+            mergeStates(remoteState);
+          }
+        }
+
+        const metadata = { name: DRIVE_FILE_NAME, mimeType: "application/json" };
+        if (!existingFile) metadata.parents = ["appDataFolder"];
+
+        const boundary = "finpulse_boundary";
+        const body =
+          `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+          JSON.stringify(metadata) +
+          `\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n` +
+          JSON.stringify(state) +
+          `\r\n--${boundary}--`;
+
+        const uploadUrl = existingFile
+          ? `https://www.googleapis.com/upload/drive/v3/files/${existingFile.id}?uploadType=multipart`
+          : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+
+        await fetch(uploadUrl, {
+          method: existingFile ? "PATCH" : "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": `multipart/related; boundary=${boundary}`
+          },
+          body
+        });
+
+        saveLocalState();
+        renderYearDropdown();
+        renderCategoryDropdowns();
+        renderUI();
+        statusEl.textContent = `Synced to Drive • ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        btnText.textContent = "Drive Synced";
+      } catch (err) {
+        statusEl.textContent = "Sync error • Retrying locally";
+        btnText.textContent = "Sync with Google Drive";
+      }
+    }
+
+    function mergeStates(remote) {
+      if (!remote) return;
+      const mergedDeleted = { ...(remote.deletedTxIds || {}), ...state.deletedTxIds };
+      state.deletedTxIds = mergedDeleted;
+
+      const txMap = new Map();
+      (remote.transactions || []).forEach(t => {
+        if (!mergedDeleted[t.id]) txMap.set(t.id, t);
+      });
+      state.transactions.forEach(t => {
+        if (mergedDeleted[t.id]) return;
+        const existing = txMap.get(t.id);
+        if (!existing || (t.updatedAt || 0) >= (existing.updatedAt || 0)) {
+          txMap.set(t.id, t);
+        }
+      });
+      state.transactions = Array.from(txMap.values());
+
+      if ((remote.categoriesUpdatedAt || 0) > (state.categoriesUpdatedAt || 0) && Array.isArray(remote.categories)) {
+        state.categories = Array.from(new Set([...remote.categories, ...state.categories]));
+        state.categoriesUpdatedAt = remote.categoriesUpdatedAt;
+      } else if (Array.isArray(remote.categories)) {
+        state.categories = Array.from(new Set([...state.categories, ...remote.categories]));
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    // Initialize on load
+    window.addEventListener("DOMContentLoaded", () => {
+      resetForm();
+      renderYearDropdown();
+      renderCategoryDropdowns();
+      renderUI();
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
